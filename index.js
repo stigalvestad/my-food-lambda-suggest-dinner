@@ -32,8 +32,8 @@ function close(sessionAttributes, fulfillmentState, message) {
         dialogAction: {
             type: 'Close',
             fulfillmentState,
-            message,
-        },
+            message
+        }
     };
 }
 
@@ -42,8 +42,8 @@ function delegate(sessionAttributes, slots) {
         sessionAttributes,
         dialogAction: {
             type: 'Delegate',
-            slots,
-        },
+            slots
+        }
     };
 }
 
@@ -70,13 +70,13 @@ function buildValidationResult(isValid, violatedSlot, messageContent) {
     if (messageContent == null) {
         return {
             isValid,
-            violatedSlot,
+            violatedSlot
         };
     }
     return {
         isValid,
         violatedSlot,
-        message: { contentType: 'PlainText', content: messageContent },
+        message: { contentType: 'PlainText', content: messageContent }
     };
 }
 
@@ -108,6 +108,19 @@ function validateOrderFlowers(flowerType, date, time) {
             // Outside of business hours
             return buildValidationResult(false, 'PickupTime', 'Our business hours are from ten a m. to five p m. Can you specify a time during this range?');
         }
+    }
+    return buildValidationResult(true, null, null);
+}
+
+function validateSuggestDinner(mainIngredient, recipeLibrary) {
+    const libraries = ['tine'];
+    const mainIngredients = ['meat', 'fish', 'plants'];
+    if (recipeLibrary && libraries.indexOf(recipeLibrary.toLowerCase()) === -1) {
+        return buildValidationResult(false, 'RecipeLibrary', `We do not support recipes from ${recipeLibrary}. At the moment we only support Tine.`);
+    }
+
+    if (mainIngredient && mainIngredients.indexOf(mainIngredient.toLowerCase()) === -1) {
+        return buildValidationResult(false, 'MainIngredient', `I don't know about ${mainIngredient}. Try something else, for example fish.`);
     }
     return buildValidationResult(true, null, null);
 }
@@ -151,6 +164,31 @@ function orderFlowers(intentRequest, callback) {
         { contentType: 'PlainText', content: `Thanks, your order for ${flowerType} has been placed and will be ready for pickup by ${time} on ${date}` }));
 }
 
+function suggestDinner(intentRequest, callback) {
+    const mainIngredient = intentRequest.currentIntent.slots.MainIngredient;
+    const recipeLibrary = intentRequest.currentIntent.slots.RecipeLibrary;
+    const source = intentRequest.invocationSource;
+
+    if (source === 'DialogCodeHook') {
+        // Perform basic validation on the supplied input slots.  Use the elicitSlot dialog action to re-prompt for the first violation detected.
+        const slots = intentRequest.currentIntent.slots;
+        const validationResult = validateSuggestDinner(mainIngredient, recipeLibrary);
+        if (!validationResult.isValid) {
+            slots[`${validationResult.violatedSlot}`] = null;
+            callback(elicitSlot(intentRequest.sessionAttributes, intentRequest.currentIntent.name, slots, validationResult.violatedSlot, validationResult.message));
+            return;
+        }
+
+        const outputSessionAttributes = intentRequest.sessionAttributes || {};
+        callback(delegate(outputSessionAttributes, intentRequest.currentIntent.slots));
+        return;
+    }
+
+    // Try to find a dinner based on the recipe library and the main ingredient
+    callback(close(intentRequest.sessionAttributes, 'Fulfilled',
+        { contentType: 'PlainText', content: `Thanks, ${recipeLibrary} suggests that you make ${mainIngredient}` }));
+}
+
 // --------------- Intents -----------------------
 
 /**
@@ -165,6 +203,9 @@ function dispatch(intentRequest, callback) {
     if (intentName === 'OrderFlowers') {
         return orderFlowers(intentRequest, callback);
     }
+    else if (intentName === 'Suggest_dinner') {
+        return suggestDinner(intentRequest, callback);
+    }
     throw new Error(`Intent with name ${intentName} not supported`);
 }
 
@@ -178,16 +219,9 @@ exports.handler = (event, context, callback) => {
         process.env.TZ = 'America/New_York';
         console.log(`event.bot.name=${event.bot.name}`);
 
-        /**
-         * Uncomment this if statement and populate with your Lex bot name and / or version as
-         * a sanity check to prevent invoking this Lambda function from an undesired Lex bot or
-         * bot version.
-         */
-        /*
-         if (event.bot.name !== 'OrderFlowers') {
-         callback('Invalid Bot Name');
-         }
-         */
+        if (event.bot.name !== 'SuggestDinner') {
+            callback('Invalid Bot Name');
+        }
         dispatch(event, (response) => callback(null, response));
     } catch (err) {
         callback(err);
