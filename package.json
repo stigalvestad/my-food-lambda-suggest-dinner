@@ -1,0 +1,15 @@
+{
+  "name": "my-food-lambda-suggest-dinner",
+  "version": "0.1.0",
+  "description": "Suggest dinner based on user input parameters",
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/stigalvestad/my-food-lambda-suggest-dinner.git"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "cheerio": "^1.0.0-rc.2",
+    "request": "2.81.0"
+  }
+}
