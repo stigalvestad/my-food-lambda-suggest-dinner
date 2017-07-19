@@ -14,6 +14,13 @@ const request = require('request');
 const cheerio = require('cheerio');
 const urlencode = require('urlencode');
 
+const FISH = 'fish';
+const MEAT = 'meat';
+const VEGETARIAN = 'vegetarian';
+
+const LIBRARY_MENY = 'mini'; //TODO because it is so difficult to pronounce meny in english
+const LIBRARY_TINE = 'fine'; //TODO because it is so difficult to pronounce tine in english
+
 // --------------- Helpers to build responses which match the structure of the necessary dialog actions -----------------------
 
 function elicitSlot(sessionAttributes, intentName, slots, slotToElicit, message) {
@@ -84,14 +91,17 @@ function buildValidationResult(isValid, violatedSlot, messageContent) {
 }
 
 function validateSuggestDinner(mainIngredient, recipeLibrary) {
-    const libraries = ['fine']; //TODO because it is so difficult to pronounce tine
-    const mainIngredients = ['meat', 'fish', 'vegetarian'];
+    const libraries = [LIBRARY_TINE, LIBRARY_MENY];
+    const mainIngredients = [MEAT, FISH, VEGETARIAN];
     if (recipeLibrary && libraries.indexOf(recipeLibrary.toLowerCase()) === -1) {
-        return buildValidationResult(false, 'RecipeLibrary', `We do not support recipes from ${recipeLibrary}. At the moment we only support Tine.`);
+        return buildValidationResult(false, 'RecipeLibrary',
+            `We do not support recipes from ${recipeLibrary}.
+            At the moment we support ${LIBRARY_TINE} and ${LIBRARY_MENY}.`);
     }
 
     if (mainIngredient && mainIngredients.indexOf(mainIngredient.toLowerCase()) === -1) {
-        return buildValidationResult(false, 'MainIngredient', `I don't know about ${mainIngredient}. Try something else, for example fish.`);
+        return buildValidationResult(false, 'MainIngredient',
+            `I don't know about ${mainIngredient}. Try something else, for example fish.`);
     }
     return buildValidationResult(true, null, null);
 }
@@ -104,12 +114,14 @@ function suggestDinner(intentRequest, callback) {
     const source = intentRequest.invocationSource;
 
     if (source === 'DialogCodeHook') {
-        // Perform basic validation on the supplied input slots.  Use the elicitSlot dialog action to re-prompt for the first violation detected.
+        // Perform basic validation on the supplied input slots.
+        // Use the elicitSlot dialog action to re-prompt for the first violation detected.
         const slots = intentRequest.currentIntent.slots;
         const validationResult = validateSuggestDinner(mainIngredient, recipeLibrary);
         if (!validationResult.isValid) {
             slots[`${validationResult.violatedSlot}`] = null;
-            callback(elicitSlot(intentRequest.sessionAttributes, intentRequest.currentIntent.name, slots, validationResult.violatedSlot, validationResult.message));
+            callback(elicitSlot(intentRequest.sessionAttributes, intentRequest.currentIntent.name,
+                slots, validationResult.violatedSlot, validationResult.message));
             return;
         }
 
@@ -118,42 +130,87 @@ function suggestDinner(intentRequest, callback) {
         return;
     }
 
-    suggestDinnerFunc(mainIngredient, recipeLibrary, intentRequest, callback);
+    suggestDinnerFunc(mainIngredient, recipeLibrary.toLowerCase(), intentRequest, callback);
+}
+
+function buildUrl(mainIngredient, recipeLibrary){
+    const translatedMainIngredient = translateMainIngredient(mainIngredient);
+    switch (recipeLibrary) {
+        case LIBRARY_TINE:
+            return `https://www.tine.no/oppskrifter/sok/oppskrifter?q=${urlencode(translatedMainIngredient)}`;
+        case LIBRARY_MENY:
+            return `https://meny.no/oppskrifter/oppskriftssok/?q=${urlencode(translatedMainIngredient)}`;
+        default:
+            throw new Error(`Recipe library ${recipeLibrary} is not supported`);
+    }
 }
 
 function suggestDinnerFunc(mainIngredient, recipeLibrary, intentRequest, callback){
     // Try to find a dinner based on the recipe library and the main ingredient
-    const translatedMainIngredient = translateMainIngredient(mainIngredient);
-    const url = 'https://www.tine.no/oppskrifter/sok/oppskrifter?q=' + urlencode(translatedMainIngredient);
+    const url = buildUrl(mainIngredient, recipeLibrary);
     console.log(`querying: ${url}`);
     request(url, function(error, response, html){
 
         if (!error){
             const $ = cheerio.load(html);
             const suggestedDinners = [];
-            $('.m-recipe-card').filter(function(){
-                var data = $(this);
 
-                const anchorElement = data.children('a').first();
-                const link = anchorElement.attr('href');
-                console.log(`link: ${link}`);
+            if (recipeLibrary === LIBRARY_TINE) {
+                $('.m-recipe-card').filter(function(){
+                    const data = $(this);
 
-                const cardTitleElement = $('.a-card-title', this).first();
-                const title = cardTitleElement.children().first().text();
-                console.log(`title: ${title}`);
+                    const anchorElement = data.children('a').first();
+                    const link = 'https://www.tine.no' + anchorElement.attr('href');
+                    console.log(`link: ${link}`);
 
-                const cardDurationElement = $('.m-cook-time', this).first();
-                const cookDuration = cardDurationElement.text();
-                console.log(`cookDuration: ${cookDuration}`);
-                console.log('');
+                    const cardTitleElement = $('.a-card-title', this).first();
+                    const title = cardTitleElement.children().first().text();
+                    console.log(`title: ${title}`);
 
-                suggestedDinners.push({
-                    title,
-                    link,
-                    cookDuration
+                    const cardDurationElement = $('.m-cook-time', this).first();
+                    const cookDuration = cardDurationElement.text();
+                    console.log(`cookDuration: ${cookDuration}`);
+                    console.log('');
+
+                    suggestedDinners.push({
+                        title,
+                        link,
+                        cookDuration
+                    });
                 });
-            });
+            }
+            else if (recipeLibrary === LIBRARY_MENY){
+                $('a.c-recipe-li').filter(function(){
+                    const data = $(this);
+
+                    const link = 'https://meny.no' + data.attr('href');
+                    console.log(`link: ${link}`);
+
+                    const cardTitleElement = $('.c-recipe-li__title', this).first();
+                    const title = cardTitleElement.text();
+                    console.log(`title: ${title}`);
+
+                    const cardDurationElement = $('.c-recipe-li__meta', this).filter(function(){
+                        return $('i', this).hasClass('c-recipe-li__icon-time');
+                    }).first();
+                    const cookDuration = $('.c-recipe-li__meta-text', cardDurationElement).first().text();
+                    console.log(`cookDuration: ${cookDuration}`);
+                    console.log('');
+
+                    suggestedDinners.push({
+                        title,
+                        link,
+                        cookDuration
+                    });
+                });
+
+            }
+
             console.log(`Found ${suggestedDinners.length} dinners`);
+            //ifs (! intentRequest){
+            //    //TODO only used to avoid crashes while testing
+            //    return;
+            //}
             if (suggestedDinners.length === 0){
                 callback(close(intentRequest.sessionAttributes, 'Fulfilled',
                     { contentType: 'PlainText', content: `I could not find any dinners, sorry!` }));
@@ -179,9 +236,9 @@ function suggestDinnerFunc(mainIngredient, recipeLibrary, intentRequest, callbac
 
 function translateMainIngredient(ingredient){
     switch (ingredient) {
-        case 'fish': return 'fisk';
-        case 'meat': return 'kjøtt';
-        case 'vegetarian': return 'vegetar';
+        case FISH: return 'fisk';
+        case MEAT: return 'kjøtt';
+        case VEGETARIAN: return 'vegetar';
         default: return 'fisk';
     }
 }
@@ -222,4 +279,4 @@ exports.handler = (event, context, callback) => {
     }
 };
 
-//suggestDinnerFunc('fisk',undefined);
+//suggestDinnerFunc('fish', 'meny');
