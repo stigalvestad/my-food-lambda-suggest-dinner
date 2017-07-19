@@ -12,6 +12,7 @@
 
 const request = require('request');
 const cheerio = require('cheerio');
+const urlencode = require('urlencode');
 
 // --------------- Helpers to build responses which match the structure of the necessary dialog actions -----------------------
 
@@ -84,7 +85,7 @@ function buildValidationResult(isValid, violatedSlot, messageContent) {
 
 function validateSuggestDinner(mainIngredient, recipeLibrary) {
     const libraries = ['fine']; //TODO because it is so difficult to pronounce tine
-    const mainIngredients = ['meat', 'fish', 'plants'];
+    const mainIngredients = ['meat', 'fish', 'vegetarian'];
     if (recipeLibrary && libraries.indexOf(recipeLibrary.toLowerCase()) === -1) {
         return buildValidationResult(false, 'RecipeLibrary', `We do not support recipes from ${recipeLibrary}. At the moment we only support Tine.`);
     }
@@ -122,11 +123,10 @@ function suggestDinner(intentRequest, callback) {
 
 function suggestDinnerFunc(mainIngredient, recipeLibrary, intentRequest, callback){
     // Try to find a dinner based on the recipe library and the main ingredient
-    const url = 'https://www.tine.no/oppskrifter/sok/oppskrifter?q=' + mainIngredient;
+    const translatedMainIngredient = translateMainIngredient(mainIngredient);
+    const url = 'https://www.tine.no/oppskrifter/sok/oppskrifter?q=' + urlencode(translatedMainIngredient);
     console.log(`querying: ${url}`);
     request(url, function(error, response, html){
-
-        const json = {};
 
         if (!error){
             const $ = cheerio.load(html);
@@ -154,12 +154,12 @@ function suggestDinnerFunc(mainIngredient, recipeLibrary, intentRequest, callbac
                 });
             });
             console.log(`Found ${suggestedDinners.length} dinners`);
-            if (suggestedDinners.length > 0){
+            if (suggestedDinners.length === 0){
                 callback(close(intentRequest.sessionAttributes, 'Fulfilled',
                     { contentType: 'PlainText', content: `I could not find any dinners, sorry!` }));
             }
             else {
-                const firstDinner = suggestedDinners.first();
+                const firstDinner = suggestedDinners[0];
                 callback(close(intentRequest.sessionAttributes, 'Fulfilled',
                     { contentType: 'PlainText', content:
                         `Thanks, ${recipeLibrary} suggests that you make ${firstDinner.title}.
@@ -175,6 +175,15 @@ function suggestDinnerFunc(mainIngredient, recipeLibrary, intentRequest, callbac
                     so I can't help you now. Sorry!` }));
         }
     });
+}
+
+function translateMainIngredient(ingredient){
+    switch (ingredient) {
+        case 'fish': return 'fisk';
+        case 'meat': return 'kjøtt';
+        case 'vegetarian': return 'vegetar';
+        default: return 'fisk';
+    }
 }
 
 // --------------- Intents -----------------------
@@ -213,4 +222,4 @@ exports.handler = (event, context, callback) => {
     }
 };
 
-suggestDinnerFunc('fisk',undefined);
+//suggestDinnerFunc('fisk',undefined);
