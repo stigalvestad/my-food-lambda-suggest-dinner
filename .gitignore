@@ -8,6 +8,12 @@ yarn-error.log*
 # Idea files
 .idea
 
+# Build folder
+tmp
+
+# Dist folder
+dist
+
 # Runtime data
 pids
 *.pid
