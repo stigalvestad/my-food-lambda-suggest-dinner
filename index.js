@@ -117,13 +117,10 @@ function suggestDinner(intentRequest, callback) {
         return;
     }
 
-    suggestDinnerFunc(mainIngredient, recipeLibrary);
-
-    callback(close(intentRequest.sessionAttributes, 'Fulfilled',
-        { contentType: 'PlainText', content: `Thanks, ${recipeLibrary} suggests that you make ${mainIngredient}` }));
+    suggestDinnerFunc(mainIngredient, recipeLibrary, intentRequest, callback);
 }
 
-function suggestDinnerFunc(mainIngredient, recipeLibrary){
+function suggestDinnerFunc(mainIngredient, recipeLibrary, intentRequest, callback){
     // Try to find a dinner based on the recipe library and the main ingredient
     const url = 'https://www.tine.no/oppskrifter/sok/oppskrifter?q=' + mainIngredient;
     console.log(`querying: ${url}`);
@@ -157,9 +154,25 @@ function suggestDinnerFunc(mainIngredient, recipeLibrary){
                 });
             });
             console.log(`Found ${suggestedDinners.length} dinners`);
+            if (suggestedDinners.length > 0){
+                callback(close(intentRequest.sessionAttributes, 'Fulfilled',
+                    { contentType: 'PlainText', content: `I could not find any dinners, sorry!` }));
+            }
+            else {
+                const firstDinner = suggestedDinners.first();
+                callback(close(intentRequest.sessionAttributes, 'Fulfilled',
+                    { contentType: 'PlainText', content:
+                        `Thanks, ${recipeLibrary} suggests that you make ${firstDinner.title}.
+                        It takes ${firstDinner.cookDuration} to cook.
+                        Link to recipe: ${firstDinner.link}` }));
+            }
         }
         else {
-            console.log('there was a problem with the request');
+            console.warn(`Problem with the request to ${url}: ${error}`);
+            callback(close(intentRequest.sessionAttributes, 'Fulfilled',
+                { contentType: 'PlainText', content:
+                    `I encountered some technical issues when talking to the recipe library,
+                    so I can't help you now. Sorry!` }));
         }
     });
 }
